@@ -44,8 +44,8 @@ public class Surface : MonoBehaviour
 
     private void OnDrawGizmos()
     {
+       // Debug.Log((4 & 1) == 1);
         if (!DrawGizmos) return;
-
         Gizmos.DrawWireCube(transform.position, new Vector3(0.5f,0.5f,0.5f));
     }
 }

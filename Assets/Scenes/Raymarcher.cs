@@ -66,10 +66,9 @@ public class Raymarcher : MonoBehaviour
         _lightColor = _light.GetComponent<Light>().color;
         _surfacesData = new List<ComputeBuffer>();
 
-        _raymarchingCS.GetKernelThreadGroupSizes(_kernelIndex, out uint x, out uint y, out _);
 
         InitRenderTexture();
-        RenderShapes();
+        SetShapesRenderData();
 
         _raymarchingCS.SetMatrix("_CameraToWorld", _camera.cameraToWorldMatrix);
         _raymarchingCS.SetMatrix("_CameraInverseProjection", _camera.projectionMatrix.inverse);
@@ -81,12 +80,10 @@ public class Raymarcher : MonoBehaviour
         _raymarchingCS.SetTexture(_kernelIndex, "Source", src);
         _raymarchingCS.SetTexture(_kernelIndex, "Destination", _renderTexture);
 
-        int threadGroupsX = Mathf.CeilToInt(Screen.width / x);
-        int threadGroupsY = Mathf.CeilToInt(Screen.height / y);
-        _raymarchingCS.Dispatch(_kernelIndex, threadGroupsX, threadGroupsY, 1);
+        DispatchShader();
 
 
-        Graphics.Blit(_renderTexture, dest);
+        Render(src, dest);
 
         foreach (var buffer in _surfacesData)
         {
@@ -94,7 +91,26 @@ public class Raymarcher : MonoBehaviour
         }
     }
 
-    private void RenderShapes()
+    private void Render(RenderTexture src, RenderTexture dest)
+    {
+        if (FindObjectsOfType<Surface>().OrderBy(x => x.BlendMode).ToList().Count == 0)
+        {
+            Graphics.Blit(src, dest);
+            return;
+        }
+
+        Graphics.Blit(_renderTexture, dest);
+    }
+
+    private void DispatchShader()
+    {
+        _raymarchingCS.GetKernelThreadGroupSizes(_kernelIndex, out uint x, out uint y, out _);
+        int threadGroupsX = Mathf.CeilToInt(Screen.width / x);
+        int threadGroupsY = Mathf.CeilToInt(Screen.height / y);
+        _raymarchingCS.Dispatch(_kernelIndex, threadGroupsX, threadGroupsY, 1);
+    }
+
+    private void SetShapesRenderData()
     {
         List<Surface> surfaces = FindObjectsOfType<Surface>().OrderBy(x => x.BlendMode).ToList();
         SurfaceData[] shapeData = new SurfaceData[surfaces.Count];
@@ -102,9 +118,9 @@ public class Raymarcher : MonoBehaviour
         for (int i = 0; i < surfaces.Count; i++)
         {
             Surface surface = surfaces[i];
-            List<IOperation> shapeAlterations =
+            List<IOperation> operations =
                 surface.GetComponents<IOperation>().OrderBy(x => x.OperationId).ToList();
-            operationValues.AddRange(shapeAlterations.Select(x => x.Value).ToList());
+            operationValues.AddRange(operations.Select(x => x.Value).ToList());
 
             shapeData[i] = new SurfaceData()
             {
@@ -113,8 +129,8 @@ public class Raymarcher : MonoBehaviour
                 rotation = surface.Rotation,
                 shapeType = (int)surface.ShapeType,
                 blend = (int)surface.BlendMode,
-                operations = shapeAlterations.Sum(x => x.OperationId),
-                operationsCount = shapeAlterations.Count,
+                operations = operations.Sum(x => x.OperationId),
+                operationsCount = operations.Count,
                 diffuse = ((Vector4)surface.Diffuse).ToVector3(),
                 blendStrength = surface.BlendStrength,
             };
@@ -137,6 +153,13 @@ public class Raymarcher : MonoBehaviour
             operationValuesBuffer =
                 new ComputeBuffer(operationValues.Count, sizeof(float) * 4 * operationValues.Count);
             operationValuesBuffer.SetData(operationValues.ToArray());
+            _raymarchingCS.SetBuffer(_kernelIndex, "operationValues", operationValuesBuffer);
+        }
+        else
+        {
+            operationValuesBuffer =
+                new ComputeBuffer(1, sizeof(float) * 4);
+            operationValuesBuffer.SetData(new[] { Vector4.one * -1 });
             _raymarchingCS.SetBuffer(_kernelIndex, "operationValues", operationValuesBuffer);
         }
 

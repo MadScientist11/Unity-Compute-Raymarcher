@@ -103,18 +103,11 @@ float3x3 rotateZ(float theta)
 }
 
 
-float GetShapeDistance(float3 p, float3 modifiedP, bool useModifiedP, Shape shape, float3x3 rotation)
+float GetShapeDistance(float3 p, Shape shape, float3x3 rotation)
 {
-    
-    if(useModifiedP)
-    {
-        p = modifiedP;
-    }
-    else
-    {
-        p = mul(rotation, (p - shape.position));
-    }
-    
+    p = mul(rotation, (p - shape.position));
+
+
     if (shape.shapeType == 0)
     {
         float d1 = sdSphere(p, shape.scale.x);
@@ -157,7 +150,7 @@ Surface SmoothUnion(Surface obj1, Surface obj2, float k)
     return surface;
 }
 
-Surface Intersection(Surface obj1, Surface obj2) //mask
+Surface Intersection(Surface obj1, Surface obj2)
 {
     Surface surface = obj1;
     if (obj2.distanceToSurface > obj1.distanceToSurface)
@@ -168,7 +161,7 @@ Surface Intersection(Surface obj1, Surface obj2) //mask
     return surface;
 }
 
-Surface SmoothIntersection(Surface obj1, Surface obj2, float k) //mask
+Surface SmoothIntersection(Surface obj1, Surface obj2, float k)
 {
     Surface surface = obj1;
     if (obj2.distanceToSurface > obj1.distanceToSurface)
@@ -179,7 +172,7 @@ Surface SmoothIntersection(Surface obj1, Surface obj2, float k) //mask
     return surface;
 }
 
-Surface Subtraction(Surface obj1, Surface obj2) //subtract
+Surface Subtraction(Surface obj1, Surface obj2)
 {
     Surface surface = obj2;
     if (-obj2.distanceToSurface > obj1.distanceToSurface)
@@ -190,7 +183,7 @@ Surface Subtraction(Surface obj1, Surface obj2) //subtract
     return surface;
 }
 
-Surface SmoothSubtraction(Surface obj1, Surface obj2, float k) //subtract
+Surface SmoothSubtraction(Surface obj1, Surface obj2, float k)
 {
     Surface surface = obj2;
     if (-obj2.distanceToSurface > obj1.distanceToSurface)
@@ -235,6 +228,42 @@ Surface Blend(Surface s1, Surface s2, float blendStrength, int blendMode)
     return s1;
 }
 
+float3 ApplyPositionOperations(float3 position, float3x3 rotation, Shape shape, inout float operationValueIndex)
+{
+    if ((shape.operations & 1) == 1)
+    {
+        float4 value = operationValues[operationValueIndex].xyzw;
+        operationValueIndex++;
+        if (value.w == 0)
+        {
+            position = fmod(position + 0.5 * value.xyz, value.xyz) - 0.5 * value.xyz;
+        }
+        else
+        {
+            position = mul(rotation, (position - shape.position));
+            position = position - value.w * clamp(round(position / value.w), -value.xyz, value.xyz);
+        }
+    }
+    return position;
+}
+
+float ApplyDistanceOperations(float distance, Shape shape, inout float operationValueIndex)
+{
+    if ((shape.operations & 2) == 2)
+    {
+        float value = operationValues[operationValueIndex].x;
+        operationValueIndex++;
+        distance = opRound(distance, value);
+    }
+    if ((shape.operations & 4) == 4)
+    {
+        float value = operationValues[operationValueIndex].x;
+        operationValueIndex++;
+        distance = opOnion(distance, value);
+    }
+    return distance;
+}
+
 
 Surface Scene(float3 p)
 {
@@ -249,39 +278,11 @@ Surface Scene(float3 p)
         float3x3 rotation = mul(mul(rotateX(-shape.rotation.x), rotateY(-shape.rotation.y)),
                                 rotateZ(-shape.rotation.z));
 
-        float3 modifiedP;
-        bool usdModifiedP = false;
+        float3 position = p;
+        position = ApplyPositionOperations(position, rotation, shape, valueIndex);
 
-        if ((shape.operations & 1) == 1)
-        {
-            float4 value = operationValues[valueIndex].xyzw;
-            valueIndex++;
-            if(value.w == 0)
-            {
-                modifiedP = fmod(p + 0.5 * value.xyz, value.xyz) - 0.5 * value.xyz;
-            }
-            else
-            {
-                p = mul(rotation, (p - shape.position));
-                modifiedP = p-value.w*clamp(round(p/value.w),-value.xyz,value.xyz);
-            }
-            
-            usdModifiedP = true;
-        }
-        shapeSurf.distanceToSurface = GetShapeDistance(p, modifiedP, usdModifiedP, shape, rotation);
-
-        if ((shape.operations & 2) == 2)
-        {
-            float value = operationValues[valueIndex].x;
-            valueIndex++;
-            shapeSurf.distanceToSurface = opRound(shapeSurf.distanceToSurface, value);
-        }
-        if ((shape.operations & 3) == 3)
-        {
-            float value = operationValues[valueIndex].x;
-
-            shapeSurf.distanceToSurface = opOnion(shapeSurf.distanceToSurface, value);
-        }
+        shapeSurf.distanceToSurface = GetShapeDistance(position, shape, rotation);
+        shapeSurf.distanceToSurface = ApplyDistanceOperations(shapeSurf.distanceToSurface, shape, valueIndex);
 
         shapeSurf.diffuse = shape.diffuse;
         surface = Blend(surface, shapeSurf, shape.blendStrength, shape.blendMode);
