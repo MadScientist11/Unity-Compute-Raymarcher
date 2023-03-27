@@ -1,0 +1,464 @@
+// Each #kernel tells which function to compile; you can have many kernels
+#pragma kernel CSMain
+
+
+#include "Packages/com.quizandpuzzle.shaderlib/Runtime/sdf.cginc"
+#include "Packages/com.quizandpuzzle.shaderlib/Runtime/math.cginc"
+// Create a RenderTexture with enableRandomWrite flag and set it
+// with cs.SetTexture
+Texture2D<float4> Source;
+RWTexture2D<float4> Destination;
+
+float4x4 _CameraToWorld;
+float4x4 _CameraInverseProjection;
+float3 _CameraForward;
+
+float3 _LightDirection;
+float3 _LightPos;
+float3 _LightColor;
+
+#define SURF_DIST 0.001
+#define MAX_STEPS 150
+#define MAX_DIST 100.0
+
+struct Ray
+{
+    float3 origin;
+    float3 direction;
+};
+
+struct Surface
+{
+    float distanceToSurface;
+    float3 diffuse;
+    float outline;
+};
+
+struct Shape
+{
+    float3 position;
+    float3 rotation;
+    float3 scale;
+    float3 diffuse;
+    int shapeType;
+    int blendMode;
+    int operations;
+    int operationsCount;
+    float blendStrength;
+};
+
+StructuredBuffer<Shape> shapes;
+StructuredBuffer<float4> operationValues;
+int numShapes;
+
+
+Ray CreateRay(float3 origin, float3 direction)
+{
+    Ray ray;
+    ray.origin = origin;
+    ray.direction = direction;
+    return ray;
+}
+
+Ray CreateCameraRay(float2 uv)
+{
+    float3 origin = mul(_CameraToWorld, float4(0, 0, 0, 1)).xyz;
+    float3 direction = mul(_CameraInverseProjection, float4(uv, 0, 1)).xyz;
+    direction = mul(_CameraToWorld, float4(direction, 0)).xyz;
+    direction = normalize(direction);
+    return CreateRay(origin, direction);
+}
+
+float3x3 rotateX(float theta)
+{
+    float c = cos(theta);
+    float s = sin(theta);
+    return float3x3(
+        float3(1, 0, 0),
+        float3(0, c, -s),
+        float3(0, s, c)
+    );
+}
+
+float3x3 rotateY(float theta)
+{
+    float c = cos(theta);
+    float s = sin(theta);
+    return float3x3(
+        float3(c, 0, s),
+        float3(0, 1, 0),
+        float3(-s, 0, c)
+    );
+}
+
+float3x3 rotateZ(float theta)
+{
+    float c = cos(theta);
+    float s = sin(theta);
+    return float3x3(
+        float3(c, -s, 0),
+        float3(s, c, 0),
+        float3(0, 0, 1)
+    );
+}
+
+
+float GetShapeDistance(float3 p, float3 modifiedP, bool useModifiedP, Shape shape, float3x3 rotation)
+{
+    
+    if(useModifiedP)
+    {
+        p = modifiedP;
+    }
+    else
+    {
+        p = mul(rotation, (p - shape.position));
+    }
+    
+    if (shape.shapeType == 0)
+    {
+        float d1 = sdSphere(p, shape.scale.x);
+        return d1;
+    }
+    else if (shape.shapeType == 1)
+    {
+        return sdBox(p, shape.scale);
+    }
+
+    return MAX_DIST;
+}
+
+float3 Blend(float a, float b, float3 colA, float3 colB, float k)
+{
+    float h = clamp(0.5 + 0.5 * (b - a) / k, 0.0, 1.0);
+    float3 blendCol = lerp(colB, colA, h);
+    return float3(blendCol);
+}
+
+Surface Union(Surface obj1, Surface obj2)
+{
+    Surface surface = obj1;
+    if (obj2.distanceToSurface < obj1.distanceToSurface)
+    {
+        surface = obj2;
+    }
+    surface.distanceToSurface = opUnion(obj2.distanceToSurface, obj1.distanceToSurface);
+    return surface;
+}
+
+Surface SmoothUnion(Surface obj1, Surface obj2, float k)
+{
+    Surface surface = obj1;
+    if (obj2.distanceToSurface < obj1.distanceToSurface)
+    {
+        surface = obj2;
+    }
+    surface.distanceToSurface = opSmoothUnion(obj2.distanceToSurface, obj1.distanceToSurface, k);
+    return surface;
+}
+
+Surface Intersection(Surface obj1, Surface obj2) //mask
+{
+    Surface surface = obj1;
+    if (obj2.distanceToSurface > obj1.distanceToSurface)
+    {
+        surface = obj2;
+    }
+    surface.distanceToSurface = opIntersection(obj2.distanceToSurface, obj1.distanceToSurface);
+    return surface;
+}
+
+Surface SmoothIntersection(Surface obj1, Surface obj2, float k) //mask
+{
+    Surface surface = obj1;
+    if (obj2.distanceToSurface > obj1.distanceToSurface)
+    {
+        surface = obj2;
+    }
+    surface.distanceToSurface = opSmoothIntersection(obj2.distanceToSurface, obj1.distanceToSurface, k);
+    return surface;
+}
+
+Surface Subtraction(Surface obj1, Surface obj2) //subtract
+{
+    Surface surface = obj2;
+    if (-obj2.distanceToSurface > obj1.distanceToSurface)
+    {
+        surface = obj1;
+    }
+    surface.distanceToSurface = opSubtraction(obj1.distanceToSurface, obj2.distanceToSurface);
+    return surface;
+}
+
+Surface SmoothSubtraction(Surface obj1, Surface obj2, float k) //subtract
+{
+    Surface surface = obj2;
+    if (-obj2.distanceToSurface > obj1.distanceToSurface)
+    {
+        surface = obj1;
+    }
+    surface.distanceToSurface = opSmoothSubtraction(obj1.distanceToSurface, obj2.distanceToSurface, k);
+    return surface;
+}
+
+Surface Blend(Surface s1, Surface s2, float blendStrength, int blendMode)
+{
+    if (blendMode == 0)
+    {
+        return Union(s1, s2);
+    }
+    if (blendMode == 1)
+    {
+        return SmoothUnion(s1, s2, blendStrength);
+    }
+    if (blendMode == 2)
+    {
+        return Subtraction(s1, s2);
+    }
+    if (blendMode == 3)
+    {
+        return SmoothSubtraction(s1, s2, blendStrength);
+    }
+    if (blendMode == 4)
+    {
+        return Union(SmoothSubtraction(s1, s2, blendStrength), s1);
+    }
+    if (blendMode == 5)
+    {
+        return Intersection(s1, s2);
+    }
+    if (blendMode == 6)
+    {
+        return SmoothIntersection(s1, s2, blendStrength);
+    }
+
+    return s1;
+}
+
+
+Surface Scene(float3 p)
+{
+    Surface surface;
+    surface.distanceToSurface = MAX_DIST;
+    surface.diffuse = 1.;
+    int valueIndex = 0;
+    for (int i = 0; i < numShapes; i++)
+    {
+        Shape shape = shapes[i];
+        Surface shapeSurf;
+        float3x3 rotation = mul(mul(rotateX(-shape.rotation.x), rotateY(-shape.rotation.y)),
+                                rotateZ(-shape.rotation.z));
+
+        float3 modifiedP;
+        bool usdModifiedP = false;
+
+        if ((shape.operations & 1) == 1)
+        {
+            float4 value = operationValues[valueIndex].xyzw;
+            valueIndex++;
+            if(value.w == 0)
+            {
+                modifiedP = fmod(p + 0.5 * value.xyz, value.xyz) - 0.5 * value.xyz;
+            }
+            else
+            {
+                p = mul(rotation, (p - shape.position));
+                modifiedP = p-value.w*clamp(round(p/value.w),-value.xyz,value.xyz);
+            }
+            
+            usdModifiedP = true;
+        }
+        shapeSurf.distanceToSurface = GetShapeDistance(p, modifiedP, usdModifiedP, shape, rotation);
+
+        if ((shape.operations & 2) == 2)
+        {
+            float value = operationValues[valueIndex].x;
+            valueIndex++;
+            shapeSurf.distanceToSurface = opRound(shapeSurf.distanceToSurface, value);
+        }
+        if ((shape.operations & 3) == 3)
+        {
+            float value = operationValues[valueIndex].x;
+
+            shapeSurf.distanceToSurface = opOnion(shapeSurf.distanceToSurface, value);
+        }
+
+        shapeSurf.diffuse = shape.diffuse;
+        surface = Blend(surface, shapeSurf, shape.blendStrength, shape.blendMode);
+
+
+        valueIndex = i + shape.operationsCount;
+    }
+
+    return surface;
+}
+
+
+float3 GetNormal(float3 surfPoint)
+{
+    float epsilon = 0.0001;
+    float centerDistance = Scene(surfPoint).distanceToSurface;
+    float xDistance = Scene(surfPoint + float3(epsilon, 0, 0)).distanceToSurface;
+    float yDistance = Scene(surfPoint + float3(0, epsilon, 0)).distanceToSurface;
+    float zDistance = Scene(surfPoint + float3(0, 0, epsilon)).distanceToSurface;
+    float3 normal = normalize(float3(xDistance, yDistance, zDistance) - centerDistance);
+
+    //float3 normal = normalize(float3(
+    //    Scene(surfPoint + float3(eps, 0.0, 0.0)).distanceToSurface - Scene(surfPoint).distanceToSurface,
+    //    Scene(surfPoint + float3(0.0, eps, 0.0)).distanceToSurface - Scene(surfPoint).distanceToSurface,
+    //    Scene(surfPoint + float3(0.0, 0.0, eps)).distanceToSurface - Scene(surfPoint).distanceToSurface
+    //));
+    return normal;
+}
+
+
+Surface RayMarch(Ray ray)
+{
+    float distanceToScene = 0;
+    float nearest = MAX_DIST;
+    Surface closestSurface;
+    float lastSDF = MAX_DIST;
+    float edge = 0.0;
+    for (int i = 0; i < MAX_STEPS; i++)
+    {
+        float3 step = ray.origin + ray.direction * distanceToScene;
+        closestSurface = Scene(step);
+
+        nearest = min(closestSurface.distanceToSurface, nearest);
+
+        if ((lastSDF < 0.05) && (closestSurface.distanceToSurface > lastSDF))
+        {
+            edge = 1.0;
+        }
+
+
+        if (closestSurface.distanceToSurface < SURF_DIST || distanceToScene > MAX_DIST) break;
+        distanceToScene += closestSurface.distanceToSurface;
+        lastSDF = closestSurface.distanceToSurface;
+    }
+    closestSurface.distanceToSurface = distanceToScene;
+    closestSurface.outline = edge;
+
+    return closestSurface;
+}
+
+float LambertLighting(float3 normalDir, float3 lightDir)
+{
+    return max(dot(normalDir, lightDir), 0.);
+}
+
+float Phong(float3 surfPoint, float3 normalDir, float3 lightDir)
+{
+    float3 cameraPos = mul(_CameraToWorld, float4(0, 0, 0, 1)).xyz;
+    float3 viewDir = normalize(cameraPos - surfPoint);
+    float3 reflectDir = reflect(lightDir, normalDir);
+    return pow(max(dot(viewDir, reflectDir), 0), 26);
+}
+
+float BlinnPhong(float3 surfPoint, float3 normalDir, float3 lightDir)
+{
+    float3 cameraPos = mul(_CameraToWorld, float4(0, 0, 0, 1)).xyz;
+    float3 viewDir = normalize(cameraPos - surfPoint);
+    float3 halfVector = normalize(lightDir + viewDir);
+    return pow(max(dot(normalDir, halfVector), 0), 200);
+}
+
+float SoftShadow(Ray ray, float mint, float tmax)
+{
+    float res = 1.0;
+    float t = mint;
+
+    for (int i = 0; i < 16; i++)
+    {
+        float3 vec = ray.origin + ray.direction * t;
+        float h = Scene(vec).distanceToSurface;
+        res = min(res, 8.0 * h / t);
+        t += clamp(h, 0.02, 0.10);
+        if (h < 0.001 || t > tmax) break;
+    }
+
+    return clamp(res, 0.0, 1.0);
+}
+
+float HardShadow(Ray ray2, float3 lightPos)
+{
+    float shadowRayLength = RayMarch(ray2).distanceToSurface; // cast shadow ray to the light source
+    if (shadowRayLength < length(lightPos - ray2.origin)) return 0.2;
+    return 1;
+}
+
+float3 Fog(float3 color, float3 fogColor, float sceneDist)
+{
+    return lerp(color, fogColor, 1.0 - exp(-0.0002 * sceneDist * sceneDist * sceneDist));
+}
+
+float3 GetPixelColor(float3 lightDir, Surface surface, float3 surfPoint, float3 normal)
+{
+    float diffuseMask = LambertLighting(normal, lightDir);
+
+    Ray shadowRay = CreateRay(surfPoint + normal * SURF_DIST * 2., lightDir);
+    diffuseMask *= max(SoftShadow(shadowRay, 0.02, 2.5), 0.1);
+
+    float specularMask = BlinnPhong(surfPoint, normal, lightDir) * (diffuseMask);
+
+    float3 cameraPos = mul(_CameraToWorld, float4(0, 0, 0, 1)).xyz;
+    float3 viewDir = normalize(cameraPos - surfPoint);
+    float fresnel = pow(clamp(1. - dot(normal, viewDir), 0., 1.), 10.);
+    float3 color = max(diffuseMask * diffuseMask * diffuseMask, 0.005) * _LightColor * surface.diffuse + specularMask +
+        float3(.1, .1, .1) * .1 + fresnel * float3(.2, .2, .5);
+    return color;
+}
+
+float Outline_OffsetDifference(in float2 uv, float depth)
+{
+    // 0.003 is the offset size, and thus outline thickness, in uv
+    float2 offset = float2(0.003, 0.0);
+
+    Surface marchA = RayMarch(CreateCameraRay(uv + offset.xy));
+    Surface marchB = RayMarch(CreateCameraRay(uv - offset.yx));
+
+    // 0.07 is the depth threshold is world units, and thus is dependent on scene geometry for a proper value.
+    float diff = clamp(max(abs(depth - marchA.distanceToSurface), abs(depth - marchB.distanceToSurface)) / 0.07, 0.0,
+                       1.0);
+
+    // 0.6 is a control value for outline stroke thickness, and 8.0 is stroke strength.
+    return 1.0 - smoothstep(0.6, -0.001, pow(diff, 8.0));
+}
+
+float Outline_NearMiss(Surface surface)
+{
+    float a = step(MAX_DIST, surface.distanceToSurface); // a == 1.0 if the depth >= FarClip, aka a miss
+    float b = clamp(surface.outline / 0.045, 0.0, 1.0); // denominator is the border width in world units
+
+    return (1.0 - pow(b, 8.0)) * a; // pow value controls edge darkness and smooth fade
+}
+
+
+[numthreads(8,8,1)]
+void CSMain(uint3 id : SV_DispatchThreadID)
+{
+    uint width, height;
+    Destination.GetDimensions(width, height);
+    float2 uv = (id.xy / float2(width, height)) * 2 - 1;
+
+    float3 color = Source[id.xy].xyz;
+
+    Ray ray = CreateCameraRay(uv);
+
+    Surface closestSurface = RayMarch(ray);
+    bool isSurfaceExists = closestSurface.distanceToSurface < MAX_DIST;
+
+    if (isSurfaceExists)
+    {
+        float3 surfPoint = ray.origin + ray.direction * closestSurface.distanceToSurface;
+        float3 normal = GetNormal(surfPoint);
+        float3 lightDir = -normalize(_LightDirection);
+
+        color = GetPixelColor(lightDir, closestSurface, surfPoint, normal);
+    }
+
+    //color = Fog(color, float3(0.1, 0.1, 0.1), d);
+    color = lerp(color, 0, closestSurface.outline);
+
+    Destination[id.xy] = float4(color, 1);
+}
