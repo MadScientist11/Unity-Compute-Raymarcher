@@ -101,13 +101,13 @@ float3x3 rotateZ(float theta)
         float3(0, 0, 1)
     );
 }
-
-
-float GetShapeDistance(float3 p, Shape shape, float3x3 rotation)
+float sdCylinder( float3 p, float3 c )
 {
-    p = mul(rotation, (p - shape.position));
+    return length(p.xz-c.xy)-c.z;
+}
 
-
+float GetShapeDistance(float3 p, Shape shape)
+{
     if (shape.shapeType == 0)
     {
         float d1 = sdSphere(p, shape.scale.x);
@@ -116,6 +116,18 @@ float GetShapeDistance(float3 p, Shape shape, float3x3 rotation)
     else if (shape.shapeType == 1)
     {
         return sdBox(p, shape.scale);
+    }
+    else if (shape.shapeType == 2)
+    {
+        return sdTorus(p, shape.scale);
+    }
+    else if (shape.shapeType == 3)
+    {
+        return sdPlane(p, float3(0,1,0), 0.1);
+    }
+    else if (shape.shapeType == 4)
+    {
+        return sdCylinder(p, shape.scale );
     }
 
     return MAX_DIST;
@@ -240,7 +252,6 @@ float3 ApplyPositionOperations(float3 position, float3x3 rotation, Shape shape, 
         }
         else
         {
-            position = mul(rotation, (position - shape.position));
             position = position - value.w * clamp(round(position / value.w), -value.xyz, value.xyz);
         }
     }
@@ -279,9 +290,10 @@ Surface Scene(float3 p)
                                 rotateZ(-shape.rotation.z));
 
         float3 position = p;
-        position = ApplyPositionOperations(position, rotation, shape, valueIndex);
+        position = mul(rotation, (position - shape.position));
 
-        shapeSurf.distanceToSurface = GetShapeDistance(position, shape, rotation);
+        position = ApplyPositionOperations(position, rotation, shape, valueIndex);
+        shapeSurf.distanceToSurface = GetShapeDistance(position, shape);
         shapeSurf.distanceToSurface = ApplyDistanceOperations(shapeSurf.distanceToSurface, shape, valueIndex);
 
         shapeSurf.diffuse = shape.diffuse;
@@ -458,7 +470,7 @@ void CSMain(uint3 id : SV_DispatchThreadID)
         color = GetPixelColor(lightDir, closestSurface, surfPoint, normal);
     }
 
-    //color = Fog(color, float3(0.1, 0.1, 0.1), d);
+    //color = Fog(color, float3(0.1, 0.1, 0.1), closestSurface.distanceToSurface);
     color = lerp(color, 0, closestSurface.outline);
 
     Destination[id.xy] = float4(color, 1);

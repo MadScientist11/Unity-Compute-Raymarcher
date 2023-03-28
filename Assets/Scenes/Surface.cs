@@ -1,22 +1,22 @@
-using System;
 using UnityEngine;
-using UnityEngine.Serialization;
 
 public enum ShapeType
 {
-    Sphere,
-    Cube,
-    Plane,
+    Sphere = 0,
+    Cube = 1,
+    Torus = 2,
+    Plane = 3,
+    Cylinder = 4,
 }
 public enum BlendMode
 {
-    Union,
-    SmoothUnion,
-    Subtraction,
-    SmoothSubtraction,
-    UnionSmoothSubtraction,
-    Intersection,
-    SmoothIntersection,
+    Union = 0,
+    SmoothUnion = 1,
+    Subtraction = 2,
+    SmoothSubtraction = 3,
+    UnionSmoothSubtraction = 4,
+    Intersection = 5,
+    SmoothIntersection = 6,
 }
 
 
@@ -44,7 +44,6 @@ public class Surface : MonoBehaviour
 
     private void OnDrawGizmos()
     {
-       // Debug.Log((4 & 1) == 1);
         if (!DrawGizmos) return;
         Gizmos.DrawWireCube(transform.position, new Vector3(0.5f,0.5f,0.5f));
     }

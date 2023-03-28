@@ -81,8 +81,6 @@ public class Raymarcher : MonoBehaviour
         _raymarchingCS.SetTexture(_kernelIndex, "Destination", _renderTexture);
 
         DispatchShader();
-
-
         Render(src, dest);
 
         foreach (var buffer in _surfacesData)
