@@ -76,6 +76,7 @@ public class Raymarcher : MonoBehaviour
         _raymarchingCS.SetVector("_LightDirection", _light.forward);
         _raymarchingCS.SetVector("_LightColor", _lightColor);
         _raymarchingCS.SetVector("_LightPos", _light.position);
+        _raymarchingCS.SetFloat("_Time", (float)EditorApplication.timeSinceStartup);
 
         _raymarchingCS.SetTexture(_kernelIndex, "Source", src);
         _raymarchingCS.SetTexture(_kernelIndex, "Destination", _renderTexture);
