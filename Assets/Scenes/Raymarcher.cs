@@ -31,10 +31,19 @@ public static class VectorExtensions
         return new Vector3(vec.x, vec.y, vec.z);
     }
 }
-
+[Flags]
+public enum Operation
+{
+    None = 0,
+    Repeat = 1,
+    Round = 2,
+    Onion = 4,
+    FBM = 8,
+    
+}
 public interface IOperation
 {
-    public int OperationId { get; set; }
+    public Operation OperationId { get; set; }
     public Vector4 Value { get; }
 }
 
@@ -46,6 +55,13 @@ public class Raymarcher : MonoBehaviour
     [SerializeField] private ComputeShader _raymarchingCS;
     [SerializeField] private Transform _light;
     [SerializeField] private bool _drawGizmos;
+    
+    [Header("Raymarching settings")]
+    [SerializeField] private bool _fog;
+    [SerializeField] private bool _outline;
+    
+    
+    
 
     private RenderTexture _renderTexture;
     private int _kernelIndex = 1;
@@ -77,6 +93,8 @@ public class Raymarcher : MonoBehaviour
         _raymarchingCS.SetVector("_LightColor", _lightColor);
         _raymarchingCS.SetVector("_LightPos", _light.position);
         _raymarchingCS.SetFloat("_Time", (float)EditorApplication.timeSinceStartup);
+        _raymarchingCS.SetBool("_Fog", _fog);
+        _raymarchingCS.SetBool("_Outline", _outline);
 
         _raymarchingCS.SetTexture(_kernelIndex, "Source", src);
         _raymarchingCS.SetTexture(_kernelIndex, "Destination", _renderTexture);
@@ -121,6 +139,14 @@ public class Raymarcher : MonoBehaviour
                 surface.GetComponents<IOperation>().OrderBy(x => x.OperationId).ToList();
             operationValues.AddRange(operations.Select(x => x.Value).ToList());
 
+            int operationFlags = 0;
+
+            if (operations is { Count: > 0 })
+            {
+                operationFlags =
+                    (int)operations.Select(x => x.OperationId).Aggregate((current, next) => current | next);
+            }
+
             shapeData[i] = new SurfaceData()
             {
                 position = surface.Position,
@@ -128,7 +154,7 @@ public class Raymarcher : MonoBehaviour
                 rotation = surface.Rotation,
                 shapeType = (int)surface.ShapeType,
                 blend = (int)surface.BlendMode,
-                operations = operations.Sum(x => x.OperationId),
+                operations = operationFlags,
                 operationsCount = operations.Count,
                 diffuse = ((Vector4)surface.Diffuse).ToVector3(),
                 blendStrength = surface.BlendStrength,

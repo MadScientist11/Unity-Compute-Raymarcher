@@ -6,7 +6,8 @@ public enum ShapeType
     Cube = 1,
     Torus = 2,
     Plane = 3,
-    Cylinder = 4,
+    Mandelbulb = 4,
+    Fbm = 5,
 }
 public enum BlendMode
 {

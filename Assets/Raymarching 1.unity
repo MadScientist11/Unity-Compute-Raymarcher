@@ -217,7 +217,7 @@ Transform:
   m_Father: {fileID: 0}
   m_RootOrder: 1
   m_LocalEulerAnglesHint: {x: 50.03, y: 123.1, z: -7}
---- !u!1 &1301141662
+--- !u!1 &641795562
 GameObject:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -225,60 +225,45 @@ GameObject:
   m_PrefabAsset: {fileID: 0}
   serializedVersion: 6
   m_Component:
-  - component: {fileID: 1301141665}
-  - component: {fileID: 1301141664}
-  - component: {fileID: 1301141663}
+  - component: {fileID: 641795564}
+  - component: {fileID: 641795563}
   m_Layer: 0
-  m_Name: Cube (1)
+  m_Name: Cube
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
   m_IsActive: 1
---- !u!114 &1301141663
+--- !u!114 &641795563
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1301141662}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 9f22b25d94e9471b8261657e08387c9e, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  Speed: 0.01
-  Strength: -0.6
---- !u!114 &1301141664
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1301141662}
+  m_GameObject: {fileID: 641795562}
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: d4b9d74f8515b7443b31681777336ca1, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
   ShapeType: 0
-  BlendMode: 0
-  BlendStrength: 1
-  Diffuse: {r: 1, g: 0.93565935, b: 0.023584902, a: 0}
---- !u!4 &1301141665
+  BlendMode: 1
+  BlendStrength: 0.877
+  Diffuse: {r: 0, g: 0, b: 0, a: 0}
+--- !u!4 &641795564
 Transform:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1301141662}
+  m_GameObject: {fileID: 641795562}
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: -23.6, y: 12.95, z: -1.0510011}
+  m_LocalPosition: {x: 0.514, y: 34.53227, z: 11.928356}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 0}
-  m_RootOrder: 3
+  m_RootOrder: 2
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1880168901
 GameObject:
@@ -382,8 +367,6 @@ MonoBehaviour:
   _raymarchingCS: {fileID: 7200000, guid: 4a7947a18f908e74690031fda323b400, type: 3}
   _light: {fileID: 489108474}
   _drawGizmos: 0
-  _fog: 1
-  _outline: 1
 --- !u!114 &1880168906
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -398,66 +381,3 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   moveSpeed: 10
   rotationSpeed: 100
---- !u!1 &2105456126
-GameObject:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  serializedVersion: 6
-  m_Component:
-  - component: {fileID: 2105456129}
-  - component: {fileID: 2105456128}
-  - component: {fileID: 2105456127}
-  m_Layer: 0
-  m_Name: Cube
-  m_TagString: Untagged
-  m_Icon: {fileID: 0}
-  m_NavMeshLayer: 0
-  m_StaticEditorFlags: 0
-  m_IsActive: 0
---- !u!114 &2105456127
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 2105456126}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 9f22b25d94e9471b8261657e08387c9e, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  Speed: 0.02
-  Strength: 0.26
---- !u!114 &2105456128
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 2105456126}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: d4b9d74f8515b7443b31681777336ca1, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  ShapeType: 1
-  BlendMode: 0
-  BlendStrength: 0
-  Diffuse: {r: 0.047058843, g: 0.20955396, b: 0.8862745, a: 0}
---- !u!4 &2105456129
-Transform:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 2105456126}
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: -23.6, y: -0.38, z: -1.0510011}
-  m_LocalScale: {x: 20.9, y: 10.72, z: 26.3}
-  m_ConstrainProportionsScale: 0
-  m_Children: []
-  m_Father: {fileID: 0}
-  m_RootOrder: 2
-  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}

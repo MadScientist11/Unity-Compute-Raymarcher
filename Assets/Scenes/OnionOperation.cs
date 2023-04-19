@@ -4,7 +4,8 @@ using UnityEngine;
 
 public class OnionOperation : MonoBehaviour, IOperation
 {
-    public int OperationId { get; set; } = 4;
+    public Operation OperationId { get; set; } = Operation.Onion;
+
     public Vector4 Value => new Vector4(Radius,0);
     public float Radius;
 }

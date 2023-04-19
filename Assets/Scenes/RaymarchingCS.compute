@@ -1,5 +1,6 @@
 // Each #kernel tells which function to compile; you can have many kernels
 #pragma kernel CSMain
+#pragma kernel Clouds
 
 
 #include "Packages/com.quizandpuzzle.shaderlib/Runtime/sdf.cginc"
@@ -17,6 +18,8 @@ float3 _LightDirection;
 float3 _LightPos;
 float3 _LightColor;
 float _Time;
+bool _Fog;
+bool _Outline;
 
 #define SURF_DIST 0.001
 #define MAX_STEPS 150
@@ -113,7 +116,7 @@ float sdCylinder(float3 p, float3 c)
 
 float2 DE(float3 pos)
 {
-    float Power = 5.0 + 10.0 * (sin(_Time/30.0) + 1.0);
+    float Power = 7.0 + 20.0 * (sin(_Time / 10.0) + 1.0);
     float3 z = pos;
     float dr = 1.0;
     float r = 0.0;
@@ -138,6 +141,52 @@ float2 DE(float3 pos)
     }
     return float2(0.9 * log(r) * r / dr, 50.0 * pow(dr, 0.128 / float(MAX_STEPS)));
 }
+
+float3 noise(in float3 x)
+{
+    float3 p = floor(x);
+    float3 f = frac(x);
+    f = f * f * (3.0 - 2.0 * f);
+
+    return lerp(lerp(lerp(hash33(p + float3(0, 0, 0)),
+                          hash33(p + float3(1, 0, 0)), f.x),
+                     lerp(hash33(p + float3(0, 1, 0)),
+                          hash33(p + float3(1, 1, 0)), f.x), f.y),
+                lerp(lerp(hash33(p + float3(0, 0, 1)),
+                          hash33(p + float3(1, 0, 1)), f.x),
+                     lerp(hash33(p + float3(0, 1, 1)),
+                          hash33(p + float3(1, 1, 1)), f.x), f.y), f.z);
+}
+
+
+float3x3 m = float3x3(0.00, 0.80, 0.60,
+                      -0.80, 0.36, -0.48,
+                      -0.60, -0.48, 0.64);
+
+
+float3 fbm(float3 q)
+{
+    float3 f = 0.5000 * noise(q);
+    q = mul(m, q) * 2.01;
+    f += 0.2500 * noise(q);
+    q = mul(m, q) * 2.02;
+    f += 0.1250 * noise(q);
+    q = mul(m, q) * 2.03;
+    f += 0.0625 * noise(q);
+    q = mul(m, q) * 2.04;
+    #if 0
+    f += 0.03125 * noise(q);
+    q = mul(m, q) * 2.05;
+    f += 0.015625 * noise(q);
+    q = mul(m, q) * 2.06;
+    f += 0.0078125 * noise(q);
+    q = mul(m, q) * 2.07;
+    f += 0.00390625 * noise(q);
+    q = mul(m, q) * 2.08;
+    #endif
+    return float3(f);
+}
+
 
 float GetShapeDistance(float3 p, Shape shape)
 {
@@ -165,7 +214,12 @@ float GetShapeDistance(float3 p, Shape shape)
 
     else if (shape.shapeType == 4)
     {
-        return DE(p*.2).x;
+        return DE(p * .2).x;
+    }
+
+    else if (shape.shapeType == 5)
+    {
+        return fbm(p);
     }
 
     return MAX_DIST;
@@ -275,6 +329,7 @@ Surface Blend(Surface s1, Surface s2, float blendStrength, int blendMode)
         return SmoothIntersection(s1, s2, blendStrength);
     }
 
+
     return s1;
 }
 
@@ -293,10 +348,18 @@ float3 ApplyPositionOperations(float3 position, float3x3 rotation, Shape shape, 
             position = position - value.w * clamp(round(position / value.w), -value.xyz, value.xyz);
         }
     }
+    if ((shape.operations & 8) == 8)
+    {
+        float speed = operationValues[operationValueIndex].x;
+        float strength = operationValues[operationValueIndex].y;
+        operationValueIndex++;
+
+        position += fbm(position + frac(_Time * speed) * 100) * strength;
+    }
     return position;
 }
 
-float ApplyDistanceOperations(float distance, Shape shape, inout float operationValueIndex)
+float ApplyDistanceOperations(float3 position, float distance, Shape shape, inout float operationValueIndex)
 {
     if ((shape.operations & 2) == 2)
     {
@@ -310,6 +373,7 @@ float ApplyDistanceOperations(float distance, Shape shape, inout float operation
         operationValueIndex++;
         distance = opOnion(distance, value);
     }
+
     return distance;
 }
 
@@ -332,7 +396,7 @@ Surface Scene(float3 p)
 
         position = ApplyPositionOperations(position, rotation, shape, valueIndex);
         shapeSurf.distanceToSurface = GetShapeDistance(position, shape);
-        shapeSurf.distanceToSurface = ApplyDistanceOperations(shapeSurf.distanceToSurface, shape, valueIndex);
+        shapeSurf.distanceToSurface = ApplyDistanceOperations(position, shapeSurf.distanceToSurface, shape, valueIndex);
 
         shapeSurf.diffuse = shape.diffuse;
         surface = Blend(surface, shapeSurf, shape.blendStrength, shape.blendMode);
@@ -439,7 +503,7 @@ float HardShadow(Ray ray2, float3 lightPos)
 
 float3 Fog(float3 color, float3 fogColor, float sceneDist)
 {
-    return lerp(color, fogColor, 1.0 - exp(-0.0002 * sceneDist * sceneDist * sceneDist));
+    return lerp(color, fogColor, 1.0 - exp(-0.00001 * sceneDist * sceneDist * sceneDist));
 }
 
 float3 GetPixelColor(float3 lightDir, Surface surface, float3 surfPoint, float3 normal)
@@ -454,9 +518,9 @@ float3 GetPixelColor(float3 lightDir, Surface surface, float3 surfPoint, float3 
     float3 cameraPos = mul(_CameraToWorld, float4(0, 0, 0, 1)).xyz;
     float3 viewDir = normalize(cameraPos - surfPoint);
     float fresnel = pow(clamp(1. - dot(normal, viewDir), 0., 1.), 7.);
-    //float3 color = max(diffuseMask * diffuseMask * diffuseMask, 0.005) * _LightColor * surface.diffuse + specularMask +
-    //    float3(.1, .1, .1) * .1 + fresnel * float3(0, .7, 1);
-    float3 color = diffuseMask + specularMask;
+    float3 color = max(diffuseMask * diffuseMask * diffuseMask, 0.005) * _LightColor * surface.diffuse + specularMask +
+        float3(.1, .1, .1) * .1 + fresnel * float3(0, .7, 1);
+    //float3 color = diffuseMask + specularMask;
 
     return color;
 }
@@ -509,8 +573,36 @@ void CSMain(uint3 id : SV_DispatchThreadID)
         color = GetPixelColor(lightDir, closestSurface, surfPoint, normal);
     }
 
-    //color = Fog(color, float3(0.1, 0.1, 0.1), closestSurface.distanceToSurface);
-    //color = lerp(color, 0, closestSurface.outline);
+    color = Fog(color, float3(0.1, 0.1, 0.1), closestSurface.distanceToSurface * _Fog);
+    if(_Outline)
+        color = lerp(color, 0, closestSurface.outline);
+
+    Destination[id.xy] = float4(color, 1);
+}
+
+[numthreads(8,8,1)]
+void Clouds(uint3 id : SV_DispatchThreadID)
+{
+    uint width, height;
+    Destination.GetDimensions(width, height);
+    float2 uv = (id.xy / float2(width, height)) * 2 - 1;
+
+    float3 color = Source[id.xy].xyz;
+
+    Ray ray = CreateCameraRay(uv);
+
+    Surface closestSurface = RayMarch(ray);
+    bool isSurfaceExists = closestSurface.distanceToSurface < MAX_DIST;
+
+    if (isSurfaceExists)
+    {
+        closestSurface.distanceToSurface /= 500.0;
+        float blend = smoothstep(0.25, 0.5, closestSurface.distanceToSurface * 1.1);
+        float fog = lerp(0.0, 1.0, blend);
+        color = lerp(closestSurface.distanceToSurface * 3.2 * ((exp( closestSurface.distanceToSurface * -0.45 )) * 1.25), float3(1, 1, 1), fog);
+    }
+
+ 
 
     Destination[id.xy] = float4(color, 1);
 }
